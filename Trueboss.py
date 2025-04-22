@@ -1,3 +1,5 @@
+import os
+import configparser
 import vgamepad as vg
 import time
 import subprocess
@@ -6,6 +8,82 @@ import pyaudio
 import numpy as np
 
 # pyinstaller --onefile --add-binary "E:\anaconda3\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll;." Trueboss.py
+
+# 配置文件相关
+CONFIG_FILE = 'config.ini'
+DEFAULT_CONFIG = {
+    'Delays': {
+        'delay_firewall': '10',
+        'delay_loading': '12',
+        'delay_offline_online': '20',
+    },
+    'Loop': {
+        'iterations': '100',
+    },
+    'Character': {
+        # 1=富兰克林, 2=麦克, 3=崔佛
+        'choice': '1',
+    }
+}
+
+def create_default_config(path: str):
+    """生成默认配置文件"""
+    config = configparser.ConfigParser()
+    config.read_dict(DEFAULT_CONFIG)
+    with open(path, 'w', encoding='utf-8') as f:
+        config.write(f)
+    print(f"未找到配置文件，已生成默认配置：{path}")
+
+def load_config(path: str) -> configparser.ConfigParser:
+    """读取配置文件，格式错误时回退到默认配置"""
+    config = configparser.ConfigParser()
+    try:
+        config.read(path, encoding='utf-8')
+        # 检查必要的 section 和 option
+        for section, opts in DEFAULT_CONFIG.items():
+            if not config.has_section(section):
+                raise ValueError(f"缺少节: {section}")
+            for option in opts:
+                if not config.has_option(section, option):
+                    raise ValueError(f"节[{section}]缺少项: {option}")
+        print(f"已加载配置文件：{path}")
+    except Exception as e:
+        print(f"读取配置文件失败 ({e})，使用默认配置")
+        config.read_dict(DEFAULT_CONFIG)
+    return config
+
+def get_config_int(config: configparser.ConfigParser, section: str, option: str, default: int) -> int:
+    """安全获取整型配置，格式错误时使用默认值"""
+    try:
+        val = config.getint(section, option)
+        return val
+    except Exception:
+        print(f"配置项 [{section}]->{option} 无效，使用默认值 {default}")
+        return default
+
+# 1. 配置文件存在性检查 & 加载
+if not os.path.exists(CONFIG_FILE):
+    create_default_config(CONFIG_FILE)
+
+config = load_config(CONFIG_FILE)
+
+# 2. 从配置中读取参数
+delay_firewall = get_config_int(config, 'Delays', 'delay_firewall', 10)
+delay_loading = get_config_int(config, 'Delays', 'delay_loading', 12)
+delay_offline_online = get_config_int(config, 'Delays', 'delay_offline_online', 20)
+t = get_config_int(config, 'Loop', 'iterations', 100)
+character = get_config_int(config, 'Character', 'choice', 1)
+if character not in (1, 2, 3):
+    print("角色选择超出范围，已重置为默认（富兰克林）")
+    character = 1
+
+print(f"""运行参数：
+  1. 断网检测延迟 = {delay_firewall} 秒
+  2. 下云后延迟   = {delay_loading} 秒
+  3. 线下上线延迟 = {delay_offline_online} 秒
+  4. 循环次数     = {t}
+  5. 角色        = {'富兰克林' if character == 1 else '麦克' if character == 2 else '崔佛'}
+""")
 
 # 创建音频实例
 p = pyaudio.PyAudio()
@@ -66,96 +144,46 @@ def right_joystick(x_value, y_value):  # -1.0到1.0之间的浮点值
 
 
 def get_domain_ip(domain: str) -> str:
-    ip = socket.gethostbyname("cs-gta5-prod.ros.rockstargames.com")
-    return ip
+    return socket.gethostbyname(domain)
 
 
-# 获取用户输入的延迟时间
-def get_delay_input(prompt, default):
-    while True:
-        try:
-            user_input = input(f"{prompt} ") or default
-            return int(user_input)
-        except ValueError:
-            print("请输入有效的整数！")
-
-
-# 新增角色选择函数
-def get_character():
-    while True:
-        choice = input("5. 请选择切线下的角色，1-富兰克林，2-崔佛，3-麦克（直接回车使用富兰克林）：") or "1"
-        try:
-            choice = int(choice)
-            if choice in [1, 2, 3]:
-                return choice
-            print("输入无效，请输入1、2或3！")
-        except ValueError:
-            print("输入无效，请输入数字！")
-
-
-print("请设置各环节延迟（直接回车使用默认值）：")
-delay_firewall = get_delay_input("1. 进线上断网和检测音频延迟，默认10秒：", 10)
-delay_loading = get_delay_input("2. 下云后的延迟，默认12秒：", 12)
-delay_offline_online = get_delay_input("3. 从线上退回到线下的延迟，默认20秒：", 20)
-t = get_delay_input("4. 拉货次数，默认100次", 100)  # 循环次数
-
-# 获取角色选择
-character = get_character()
-print(f"\n已选择角色：{'富兰克林' if character == 1 else '麦克' if character == 2 else '崔佛'}")
-
+# 主逻辑
 r = 0
-
 try:
-    # 主循环
     for _ in range(t):
-        # 删除防火墙规则（循环开始时原有操作）
+        # 删除旧的防火墙规则
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True)
 
+        # 接电话/挂电话 3 次
         for _ in range(3):
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)  # 接电话
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, 0.1)  # 挂电话
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, 0.1)
             time.sleep(0.1)
 
-        # 按 OPTIONS 键，保持 0.5 秒
+        # 进入菜单并导航（原有操作）
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS, 0.1)
         time.sleep(0.5)
-
-        # 按右方向键 5 次，每次 50 毫秒
         for _ in range(5):
             press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST, 0.05)
             time.sleep(0.03)
         time.sleep(1.5)
-
-        # 按 CROSS 键，保持 0.2 秒
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
         time.sleep(0.2)
-
-        # 按上方向键一次，100 毫秒
         press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH, 0.1)
         time.sleep(0.2)
-
-        # 按 CROSS 键，保持 0.3 秒
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
         time.sleep(0.3)
-
-        # 按下方向键一次
         press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH, 0.1)
         time.sleep(0.2)
-
-        # 按 CROSS 键
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
         time.sleep(0.2)
-
-        # 按 CROSS 键，保持 0.3 秒
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
         time.sleep(0.2)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, 0.1)
 
-        # 断网和检测音频的延迟
+        # 断网
         time.sleep(delay_firewall)
-
-        # 设置防火墙规则（需管理员权限运行）
-        ip = socket.gethostbyname("cs-gta5-prod.ros.rockstargames.com")
+        ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
         subprocess.run(
             f'netsh advfirewall firewall add rule '
             f'dir=out action=block protocol=TCP '
@@ -163,82 +191,68 @@ try:
             f'name="仅阻止云存档上传"',
             shell=True
         )
-        print("断网")
+        print("已断网，开始检测音频")
 
+        # 检测音频响度
         start_time = time.time()
         while True:
-            # 检查超时
             if time.time() - start_time > TIMEOUT:
                 print("超时，未检测到超过阈值的音频")
                 break
-
-            # 创建音频流
             stream = p.open(
-                format=pyaudio.paInt16,
+                format=FORMAT,
                 channels=1,
                 rate=RATE,
                 input=True,
                 input_device_index=index,
-                frames_per_buffer=CHUNK, )
-
-            # 读取音频数据
+                frames_per_buffer=CHUNK,
+            )
             data = stream.read(CHUNK, exception_on_overflow=False)
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            audio_data = audio_data.astype(np.float32) / 32768.0  # 强制归一化
-
-            # 计算响度
-            rms = np.sqrt(np.mean(audio_data ** 2)) + 1e-10
-            rms = rms * 100
-            print(rms, f"当前rms: {rms:.3f}", end='\r')  # 实时显示
-
+            audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
+            print(f"\r当前 RMS: {rms:.3f}", end='')
+            stream.close()
             if rms > THRESHOLD:
                 print(f"\n检测到响度超过阈值: {rms:.3f} > {THRESHOLD}")
                 break
 
-            # 监听收尾处理
-            stream.close()
-
-        # 线上下云后的延迟
+        # 下云后延迟
         time.sleep(delay_loading)
 
-        # 切线下
-        print('xiaxian')
+        # 切线下流程
+        print("切线下中…")
         for _ in range(3):
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)  # 接电话
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, 0.1)  # 挂电话
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.1)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, 0.1)
             time.sleep(0.1)
-
-        gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)  # 角色选择器
+        gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
         time.sleep(1.5)
-
-        # 根据角色选择摇杆操作
+        # 依据角色摇杆
         if character == 1:
-            right_joystick(0, 1)  # 富兰克林
+            right_joystick(0, 1)
         elif character == 2:
-            right_joystick(1, 0)  # 崔佛
-        elif character == 3:
-            right_joystick(-1, 0)  # 麦克
-
+            right_joystick(-1, 0)
+        else:
+            right_joystick(1, 0)
         gamepad.update()
         time.sleep(0.5)
-        gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)  # 取消角色选择器
+        gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)
         gamepad.update()
         gamepad.reset()
         gamepad.update()
         time.sleep(0.3)
-        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.2)  # 确认切线下
+        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 0.2)
         time.sleep(0.3)
-        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, 0.2)  # 确认切线下
+        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, 0.2)
 
-        # 从线下到线上的延迟
+        # 线下到线上延迟
         time.sleep(delay_offline_online)
-        r = r + 1
-        print("\n已完成", r, "次")
+        r += 1
+        print(f"已完成 {r} 次\n")
 
 except KeyboardInterrupt:
-    print("\n已完成", r, "次，检测到用户中断，正在清理防火墙规则...")
+    print(f"\n已完成 {r} 次，检测到用户中断，正在清理防火墙规则…")
     subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True)
     print("防火墙规则已删除，程序安全退出！")
-    stream.close()
     p.terminate()
