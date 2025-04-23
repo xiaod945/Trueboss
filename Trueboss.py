@@ -83,17 +83,17 @@ button_release_delay3 = 1.5  # 松开按键后等待时间（默认1.5秒）
 
 # 音频相关配置
 [Audio]
-format = pyaudio.paInt16     # 16-bit采样格式
+format = 4     # 2=32-bit,4=24-bit,8=16-bit  采样格式 
 channels = 2                 # 声道
-rate = 44100                 # 采样率
+rate = 48000                 # 采样率
 chunk = 1024                 # 每次读取的帧数
 threshold = 2.5              # 响度阈值（根据实际情况调整）
-audio_timeout = 35           # 超时时间（秒）
+audio_timeout = 60           # 超时时间（秒）
 
-# 断网相关配置
-[Cutnetwork]
+# 杂项相关配置
+[Miscset]
 cutnetworkset = 0               # 0:固定时间检测下云都断网 1:检测到下云才断网
-
+endset = 0                      # 0:最后一次断网回线下 1:最后不断网保存
 # 循环次数配置
 [Loop]
 iterations = 100             # 总循环次数（默认100次）
@@ -165,13 +165,14 @@ button_release_delay2 = get_config_float(config, 'Delays', 'button_release_delay
 button_release_delay3 = get_config_float(config, 'Delays', 'button_release_delay3', 1.5)
 t = get_config_int(config, 'Loop', 'iterations', 100)
 character = get_config_int(config, 'Character', 'choice', 1)
-format = get_config_int(config, 'Audio', 'format', pyaudio.paInt16)     
+format = get_config_int(config, 'Audio', 'format', pyaudio.paInt24)     
 channels = get_config_int(config, 'Audio', 'channels', 2)                      
 rate = get_config_int(config, 'Audio', 'rate', 44100)                     
 chunk = get_config_int(config, 'Audio', 'chunk', 1024)                     
 threshold = get_config_float(config, 'Audio', 'threshold', 2.8)                  
-audio_timeout = get_config_int(config, 'Audio', 'timeout ', 60)                     
+audio_timeout = get_config_int(config, 'Audio', 'audio_timeout', 60)                     
 cutnetworkset = get_config_int(config, 'Cutnetwork', 'cutnetworkset', 0)  
+endset = get_config_int(config, 'Cutnetwork', 'cutnetworkset', 0)  
 # 验证角色选择
 if character not in (1, 2, 3):
     print("角色选择超出范围，已重置为默认（富兰克林）")
@@ -248,14 +249,28 @@ def get_domain_ip(domain: str) -> str:
     return socket.gethostbyname(domain)
 
 def cutnetwork():
-    ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
-    subprocess.run(
+    if endset == 1:
+      if r<t:
+        ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
+        subprocess.run(
             f'netsh advfirewall firewall add rule '
             f'dir=out action=block protocol=TCP '
             f'remoteip="{ip},192.81.241.171" '
             f'name="仅阻止云存档上传"',
             shell=True,stdout=subprocess.DEVNULL
         )
+      else:
+        print("最后一次保存不断网")      
+    else:
+      ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
+      subprocess.run(
+            f'netsh advfirewall firewall add rule '
+            f'dir=out action=block protocol=TCP '
+            f'remoteip="{ip},192.81.241.171" '
+            f'name="仅阻止云存档上传"',
+            shell=True,stdout=subprocess.DEVNULL
+        )
+      
 def getRuntime():
     Runtime = time.time() - start_time
     # 将秒转换为小时、分钟、秒
@@ -295,6 +310,7 @@ r = 0
 start_time=time.time()
 try:
     for _ in range(t):
+        r += 1
         # 删除旧的防火墙规则
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,stdout=subprocess.DEVNULL)
         # 接电话/挂电话 3 次
@@ -363,7 +379,6 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
         # 线上到线下延迟
         time.sleep(delay_offline_online)
-        r += 1
         print(f"已完成 {r} 次 \n")
         getRuntime()
 except KeyboardInterrupt:
