@@ -19,12 +19,25 @@ def create_default_config(path: str):
 [Delays]
 delay_firewall = 15          # 断网检测延迟（默认15秒）
 delay_loading = 20           # 下云后延迟（默认20秒）
-delay_offline_online = 40    # 线下切线上延迟（默认40秒）
+delay_offline_online = 40    # 线上切线下延迟（默认40秒）
 button_hold_delay = 0.1      # 按键按下持续时间（默认0.1秒）
 button_release_delay = 0.5   # 松开按键后等待时间（默认0.5秒）
 button_hold_delay2 = 0.11    # 按键按下持续时间（默认0.11秒）
 button_release_delay2 = 0.15 # 松开按键后等待时间（默认0.15秒）
 button_release_delay3 = 1.5  # 松开按键后等待时间（默认1.5秒）
+
+# 音频相关配置
+[Audio]
+format = pyaudio.paInt16     # 16-bit采样格式
+channels = 2                 # 声道
+rate = 44100                 # 采样率
+chunk = 1024                 # 每次读取的帧数
+threshold = 2.5              # 响度阈值（根据实际情况调整）
+audio_timeout = 35           # 超时时间（秒）
+
+# 断网相关配置
+[Cutnetwork]
+cutnetworkset = 0               # 0:固定时间检测下云都断网 1:检测到下云才断网
 
 # 循环次数配置
 [Loop]
@@ -37,7 +50,6 @@ choice = 1                   # 默认角色：富兰克林
     with open(path, 'w', encoding='utf-8') as f:
         f.write(default_config_content.strip() + '\n')
     print(f"未找到配置文件，已生成默认配置：{path}")
-
 
 def load_config(path: str) -> configparser.ConfigParser:
     config = configparser.ConfigParser(
@@ -63,7 +75,6 @@ def load_config(path: str) -> configparser.ConfigParser:
         create_default_config(path)
         config.read(path, encoding='utf-8')
         return config
-
 
 def get_config_int(config: configparser.ConfigParser, section: str, option: str, default: int) -> int:
     """安全获取整型配置"""
@@ -99,12 +110,21 @@ button_release_delay2 = get_config_float(config, 'Delays', 'button_release_delay
 button_release_delay3 = get_config_float(config, 'Delays', 'button_release_delay3', 1.5)
 t = get_config_int(config, 'Loop', 'iterations', 100)
 character = get_config_int(config, 'Character', 'choice', 1)
-
+format = get_config_int(config, 'Audio', 'format', pyaudio.paInt16)     
+channels = get_config_int(config, 'Audio', 'channels', 2)                      
+rate = get_config_int(config, 'Audio', 'rate', 44100)                     
+chunk = get_config_int(config, 'Audio', 'chunk', 1024)                     
+threshold = get_config_float(config, 'Audio', 'threshold', 2.8)                  
+audio_timeout = get_config_int(config, 'Audio', 'timeout ', 60)                     
+cutnetworkset = get_config_int(config, 'Cutnetwork', 'cutnetworkse', 0)  
 # 验证角色选择
 if character not in (1, 2, 3):
     print("角色选择超出范围，已重置为默认（富兰克林）")
     character = 1
-
+# 验证断网选择
+if cutnetworkset not in (0,1):
+    print("断网选择超出范围，已重置为默认（0:固定时间检测下云都断网）")
+    cutnetworkset = 0
 print(f"""运行参数：
   1. 断网延迟     = {delay_firewall} 秒
   2. 下云后延迟    = {delay_loading} 秒
@@ -116,6 +136,8 @@ print(f"""运行参数：
   6. 按键3等待时间 = {button_release_delay3} 秒
   7. 循环次数     = {t}
   8. 当前角色     = {'富兰克林' if character == 1 else '麦克' if character == 2 else '崔佛'}
+  9. 音频检测阈值 = {threshold}             
+  10. 音频检测超时 = {audio_timeout}  秒
 """)
 
 # 创建音频实例
@@ -127,17 +149,7 @@ for i in range(p.get_device_count()):
         if device_info.get('hostApi', '') == 0:
             # print(device_info)
             index = i
-# 设备选择
-# index = int(input("请输入设备序号: "))
-# print("已选择", index, "号")
 
-# 音频参数
-FORMAT = pyaudio.paInt24  # 16-bit采样格式
-CHANNELS = 2
-RATE = 48000  # 采样率
-CHUNK = 1024  # 每次读取的帧数
-THRESHOLD = 2.8  # 响度阈值（根据实际情况调整）
-TIMEOUT = 35  # 超时时间（秒）
 
 # 创建手柄实例
 gamepad = vg.VDS4Gamepad()
@@ -179,14 +191,57 @@ def right_joystick(x_value, y_value):  # -1.0到1.0之间的浮点值
 def get_domain_ip(domain: str) -> str:
     return socket.gethostbyname(domain)
 
+def cutnetwork():
+    ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
+    subprocess.run(
+            f'netsh advfirewall firewall add rule '
+            f'dir=out action=block protocol=TCP '
+            f'remoteip="{ip},192.81.241.171" '
+            f'name="仅阻止云存档上传"',
+            shell=True,stdout=subprocess.DEVNULL
+        )
+    print("已断网:固定延时")
+def getRuntime():
+    Runtime = time.time() - start_time
+    # 将秒转换为小时、分钟、秒
+    hours = int(Runtime // 3600)
+    remaining_seconds = Runtime % 3600
+    minutes = int(remaining_seconds // 60)
+    seconds = int(remaining_seconds % 60)
+    print(f"运行时间：{hours:02}:{minutes:02}:{seconds:02}\n")
+def listening():
+    audio_start_time = time.time()
+    while True:
+      if time.time() - audio_start_time > audio_timeout:
+        print("超时，未检测到超过阈值的音频")
+        break
+      stream = p.open(
+                format=format,
+                channels=channels,
+                rate=rate,
+                input=True,
+                input_device_index=index,
+                frames_per_buffer=chunk,
+            )
+      data = stream.read(chunk, exception_on_overflow=False)
+      audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+      rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
+      print(f"\r当前 RMS: {rms:.3f}", end='')
+      if rms > threshold:
+        print(f"\n检测到响度超过阈值: {rms:.3f} > {threshold}")
+        cutnetwork()
+        print("已断网:检测音频")
+        break
+    stream.close()
+
 
 # 主逻辑
 r = 0
+start_time=time.time()
 try:
     for _ in range(t):
         # 删除旧的防火墙规则
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,stdout=subprocess.DEVNULL)
-
         # 接电话/挂电话 3 次
         for _ in range(3):
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
@@ -213,60 +268,20 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
-
         # 断网
-        time.sleep(delay_firewall)
-        ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
-        subprocess.run(
-            f'netsh advfirewall firewall add rule '
-            f'dir=out action=block protocol=TCP '
-            f'remoteip="{ip},192.81.241.171" '
-            f'name="仅阻止云存档上传"',
-            shell=True,stdout=subprocess.DEVNULL
-        )
-        print("已断网，开始检测音频")
-
+        if cutnetworkset == 0:
+            cutnetwork()
+            time.sleep(delay_firewall)
+        cutnetwork()
         # 检测音频响度
-        start_time = time.time()
-        while True:
-            if time.time() - start_time > TIMEOUT:
-                print("超时，未检测到超过阈值的音频")
-                break
-            stream = p.open(
-                format=FORMAT,
-                channels=1,
-                rate=RATE,
-                input=True,
-                input_device_index=index,
-                frames_per_buffer=CHUNK,
-            )
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
-            print(f"\r当前 RMS: {rms:.3f}", end='')
-            stream.close()
-            if rms > THRESHOLD:
-                print(f"\n检测到响度超过阈值: {rms:.3f} > {THRESHOLD}")
-                # 再次断网
-                ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
-                subprocess.run(
-                    f'netsh advfirewall firewall add rule '
-                    f'dir=out action=block protocol=TCP '
-                    f'remoteip="{ip},192.81.241.171" '
-                    f'name="仅阻止云存档上传"',
-                    shell=True,stdout=subprocess.DEVNULL
-                )
-                print("再断一次")
-                break
-
+        listening()
         # 下云后延迟
         time.sleep(delay_loading)
         print("发呆等电话…")
-
         # 切线下流程
         for _ in range(3):
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_release_delay3)
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_release_delay3)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_release_delay)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_release_delay)
             time.sleep(button_release_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
@@ -289,12 +304,11 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
-
-        # 线下到线上延迟
+        # 线上到线下延迟
         time.sleep(delay_offline_online)
         r += 1
-        print(f"已完成 {r} 次\n")
-
+        print(f"已完成 {r} 次 \n")
+        getRuntime()
 except KeyboardInterrupt:
     print(f"\n已完成 {r} 次，检测到用户中断，正在清理防火墙规则…")
     subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,stdout=subprocess.DEVNULL)
