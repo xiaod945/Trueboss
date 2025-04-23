@@ -25,14 +25,18 @@ def check_dependencies():
         print("\n错误：ViGEm驱动未安装！")
         choice = input("输入 1 安装驱动，输入其他任意字符退出：")
         if choice == '1':
-            installer = os.path.join(os.path.dirname(sys.argv[0]),'ViGEmBus_1.22.0_x64_x86_arm64.exe')
+            # 一键文件模式下的正确路径
+            base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            installer = os.path.join(base, "ViGEmBus_1.22.0_x64_x86_arm64.exe")
             try:
-                subprocess.run([installer], shell=True, check=True)
+                subprocess.run([installer], check=True)
+                # 或者提权安装：
+                # ctypes.windll.shell32.ShellExecuteW(None, "runas", installer, None, None, 1)
             except Exception as e:
                 print(f"安装失败：{e}")
                 sys.exit(1)
-
-
+        else:
+            sys.exit()
 
     # 检测虚拟声卡
     p = pyaudio.PyAudio()
@@ -44,12 +48,23 @@ def check_dependencies():
         print("\n错误：未找到虚拟音频设备！")
         choice = input("输入 1 安装驱动，输入其他任意字符退出：")
         if choice == '1':
-            installer = os.path.join(os.path.dirname(sys.argv[0]), 'VBCABLE\\VBCABLE_Setup_x64.exe')
+            if getattr(sys, 'frozen', False):
+                base_path = sys._MEIPASS
+            else:
+                base_path = os.path.dirname(os.path.abspath(__file__))
+
+            installer = os.path.join(base_path, 'VBCABLE', 'VBCABLE_Setup_x64.exe')
+
+            # 然后调用安装程序
             try:
-                subprocess.run([installer], shell=True, check=True)
+                subprocess.run([installer], check=True)
+                # 如果需要弹 UAC 提权对话框，可改成：
+                # ctypes.windll.shell32.ShellExecuteW(None, "runas", installer, None, None, 1)
             except Exception as e:
-                print(f"安装失败：{e}")
+                print(f"虚拟声卡安装失败：{e}")
                 sys.exit(1)
+        else:
+            sys.exit()
 
 
 # 前置检测（需在导入vgamepad前执行）
@@ -62,10 +77,12 @@ import socket
 import numpy as np
 # 现在可以安全导入vgamepad
 import vgamepad as vg
+
 # pyinstaller --onefile --add-binary "E:\anaconda3\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll;." Trueboss.py
 
 # 配置文件路径
 CONFIG_FILE = 'Trueboss.ini'
+
 
 def create_default_config(path: str):
     """生成带注释的默认配置文件"""
@@ -106,6 +123,7 @@ choice = 1                   # 默认角色：富兰克林
         f.write(default_config_content.strip() + '\n')
     print(f"未找到配置文件，已生成默认配置：{path}")
 
+
 def load_config(path: str) -> configparser.ConfigParser:
     config = configparser.ConfigParser(
         inline_comment_prefixes=('#', ';')
@@ -130,6 +148,7 @@ def load_config(path: str) -> configparser.ConfigParser:
         create_default_config(path)
         config.read(path, encoding='utf-8')
         return config
+
 
 def get_config_int(config: configparser.ConfigParser, section: str, option: str, default: int) -> int:
     """安全获取整型配置"""
@@ -165,24 +184,25 @@ button_release_delay2 = get_config_float(config, 'Delays', 'button_release_delay
 button_release_delay3 = get_config_float(config, 'Delays', 'button_release_delay3', 1.5)
 t = get_config_int(config, 'Loop', 'iterations', 100)
 character = get_config_int(config, 'Character', 'choice', 1)
-format = get_config_int(config, 'Audio', 'format', pyaudio.paInt24)     
-channels = get_config_int(config, 'Audio', 'channels', 2)                      
-rate = get_config_int(config, 'Audio', 'rate', 44100)                     
-chunk = get_config_int(config, 'Audio', 'chunk', 1024)                     
-threshold = get_config_float(config, 'Audio', 'threshold', 2.8)                  
-audio_timeout = get_config_int(config, 'Audio', 'audio_timeout', 60)                     
-cutnetworkset = get_config_int(config, 'Miscset', 'cutnetworkset', 0)  
-endset = get_config_int(config, 'Miscset', 'endset', 0)  
+format = get_config_int(config, 'Audio', 'format', 4)
+channels = get_config_int(config, 'Audio', 'channels', 2)
+rate = get_config_int(config, 'Audio', 'rate', 48000)
+chunk = get_config_int(config, 'Audio', 'chunk', 1024)
+threshold = get_config_float(config, 'Audio', 'threshold', 2.8)
+audio_timeout = get_config_int(config, 'Audio', 'audio_timeout', 60)
+cutnetworkset = get_config_int(config, 'Miscset', 'cutnetworkset', 0)
+endset = get_config_int(config, 'Miscset', 'endset', 0)
 # 验证角色选择
 if character not in (1, 2, 3):
     print("角色选择超出范围，已重置为默认（富兰克林）")
     character = 1
 # 验证断网选择
-if cutnetworkset not in (0,1):
+if cutnetworkset not in (0, 1):
     print("断网选择超出范围，已重置为默认（0:固定时间检测下云都断网）")
     cutnetworkset = 0
-print(f"""运行参数：
-  0. 断网方式      = {cutnetworkset} --0:固定时间检测下云都断网 1:检测到下云才断网
+print(f"""你可以修改Trueboss.ini提升效率或者增强稳定性，修改后重启软件生效
+运行参数：
+  0. 断网方式      = {cutnetworkset}   0:固定时间检测下云都断网 1:检测到下云才断网
   1. 断网/检测下云延迟     = {delay_firewall} 秒
   2. 下云后延迟    = {delay_loading} 秒
   3. 下线延迟 = {delay_offline_online} 秒
@@ -195,7 +215,7 @@ print(f"""运行参数：
   8. 当前角色     = {'富兰克林' if character == 1 else '麦克' if character == 2 else '崔佛'}
   9. 音频检测阈值 = {threshold}             
   10. 音频检测超时 = {audio_timeout}  秒
-  11. 结束方式 = {endset} --0:最后一次断网回线下 1:最后不断网保存
+  11. 结束方式 = {endset}   0:最后一次断网回线下 1:最后不断网保存
 """)
 
 # 创建音频实例
@@ -207,7 +227,6 @@ for i in range(p.get_device_count()):
         if device_info.get('hostApi', '') == 0:
             # print(device_info)
             index = i
-
 
 # 创建手柄实例
 gamepad = vg.VDS4Gamepad()
@@ -249,29 +268,31 @@ def right_joystick(x_value, y_value):  # -1.0到1.0之间的浮点值
 def get_domain_ip(domain: str) -> str:
     return socket.gethostbyname(domain)
 
+
 def cutnetwork():
     if endset == 1:
-      if r<t:
+        if r < t:
+            ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
+            subprocess.run(
+                f'netsh advfirewall firewall add rule '
+                f'dir=out action=block protocol=TCP '
+                f'remoteip="{ip},192.81.241.171" '
+                f'name="仅阻止云存档上传"',
+                shell=True, stdout=subprocess.DEVNULL
+            )
+        else:
+            print("最后一次保存不断网")
+    else:
         ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
         subprocess.run(
             f'netsh advfirewall firewall add rule '
             f'dir=out action=block protocol=TCP '
             f'remoteip="{ip},192.81.241.171" '
             f'name="仅阻止云存档上传"',
-            shell=True,stdout=subprocess.DEVNULL
+            shell=True, stdout=subprocess.DEVNULL
         )
-      else:
-        print("最后一次保存不断网")      
-    else:
-      ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
-      subprocess.run(
-            f'netsh advfirewall firewall add rule '
-            f'dir=out action=block protocol=TCP '
-            f'remoteip="{ip},192.81.241.171" '
-            f'name="仅阻止云存档上传"',
-            shell=True,stdout=subprocess.DEVNULL
-        )
-      
+
+
 def getRuntime():
     Runtime = time.time() - start_time
     # 将秒转换为小时、分钟、秒
@@ -280,40 +301,43 @@ def getRuntime():
     minutes = int(remaining_seconds // 60)
     seconds = int(remaining_seconds % 60)
     print(f"运行时间：{hours:02}:{minutes:02}:{seconds:02}\n")
+
+
 def listening():
     audio_start_time = time.time()
     while True:
-      if time.time() - audio_start_time > audio_timeout:
-        print("超时，未检测到超过阈值的音频")
-        break
-      stream = p.open(
-                format=format,
-                channels=channels,
-                rate=rate,
-                input=True,
-                input_device_index=index,
-                frames_per_buffer=chunk,
-            )
-      data = stream.read(chunk, exception_on_overflow=False)
-      audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-      rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
-      print(f"\r当前 RMS: {rms:.3f}", end='')
-      if rms > threshold:
-        print(f"\n检测到响度超过阈值: {rms:.3f} > {threshold}")
-        cutnetwork()
-        print("已断网:检测音频")
-        break
+        if time.time() - audio_start_time > audio_timeout:
+            print("超时，未检测到超过阈值的音频")
+            break
+        stream = p.open(
+            format=format,
+            channels=channels,
+            rate=rate,
+            input=True,
+            input_device_index=index,
+            frames_per_buffer=chunk,
+        )
+        data = stream.read(chunk, exception_on_overflow=False)
+        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+        rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
+        print(f"\r当前 RMS: {rms:.3f}", end='')
+        if rms > threshold:
+            print(f"\n检测到响度超过阈值: {rms:.3f} > {threshold}")
+            cutnetwork()
+            print("已断网:检测音频")
+            break
     stream.close()
 
 
 # 主逻辑
 r = 0
-start_time=time.time()
+start_time = time.time()
 try:
     for _ in range(t):
         r += 1
         # 删除旧的防火墙规则
-        subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,stdout=subprocess.DEVNULL)
+        subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
+                       stdout=subprocess.DEVNULL)
         # 接电话/挂电话 3 次
         for _ in range(3):
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
@@ -384,8 +408,9 @@ try:
         getRuntime()
 except KeyboardInterrupt:
     print(f"\n已完成 {r} 次，检测到用户中断，正在清理防火墙规则…")
-    subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,stdout=subprocess.DEVNULL)
+    subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
+                   stdout=subprocess.DEVNULL)
     print("防火墙规则已删除，程序安全退出！")
-    if p.Stream.is_active==True:
+    if p.Stream.is_active == True:
         p.Stream.close()
     p.terminate()
