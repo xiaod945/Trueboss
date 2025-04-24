@@ -31,9 +31,9 @@ button_release_delay3 = 1.5  # 松开按键后等待时间（默认1.5秒）
 
 # 音频相关配置
 [Audio]
-format = 4     # 2=32-bit,4=24-bit,8=16-bit  采样格式 
+format = 8     # 2=32-bit,4=24-bit,8=16-bit  采样格式 
 channels = 2                 # 声道
-rate = 48000                 # 采样率
+rate = 44100                 # 采样率
 chunk = 1024                 # 每次读取的帧数
 threshold = 2.5              # 响度阈值（根据实际情况调整）
 audio_timeout = 60           # 超时时间（秒）
@@ -56,7 +56,6 @@ choice = 1                   # 默认角色：富兰克林
     print("正在为您打开使用文档...")
     try:
         webbrowser.open(DOCUMENT_URL)
-        input("按回车键继续...")
     except Exception as e:
         print(f"打开文档失败: {e}")
 
@@ -72,7 +71,6 @@ def show_document_prompt():
     if choice == '1':
         try:
             webbrowser.open(DOCUMENT_URL)
-            input("按回车键继续...")
         except Exception as e:
             print(f"打开文档失败: {e}")
     # else:
@@ -210,11 +208,11 @@ button_release_delay2 = get_config_float(config, 'Delays', 'button_release_delay
 button_release_delay3 = get_config_float(config, 'Delays', 'button_release_delay3', 1.5)
 t = get_config_int(config, 'Loop', 'iterations', 100)
 character = get_config_int(config, 'Character', 'choice', 1)
-format = get_config_int(config, 'Audio', 'format', 4)
+format = get_config_int(config, 'Audio', 'format', 8)
 channels = get_config_int(config, 'Audio', 'channels', 2)
-rate = get_config_int(config, 'Audio', 'rate', 48000)
+rate = get_config_int(config, 'Audio', 'rate', 44100)
 chunk = get_config_int(config, 'Audio', 'chunk', 1024)
-threshold = get_config_float(config, 'Audio', 'threshold', 2.8)
+threshold = get_config_float(config, 'Audio', 'threshold', 2.5)
 audio_timeout = get_config_int(config, 'Audio', 'audio_timeout', 60)
 cutnetworkset = get_config_int(config, 'Miscset', 'cutnetworkset', 0)
 endset = get_config_int(config, 'Miscset', 'endset', 0)
@@ -321,11 +319,7 @@ def getRuntime():
 
 def listening():
     audio_start_time = time.time()
-    while True:
-        if time.time() - audio_start_time > audio_timeout:
-            print("超时，未检测到超过阈值的音频")
-            break
-        stream = p.open(
+    stream = p.open(
             format=format,
             channels=channels,
             rate=rate,
@@ -333,8 +327,13 @@ def listening():
             input_device_index=index,
             frames_per_buffer=chunk,
         )
+    while True:
+        if time.time() - audio_start_time > audio_timeout:
+            print("超时，未检测到超过阈值的音频")
+            break
         data = stream.read(chunk, exception_on_overflow=False)
-        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_data = np.frombuffer(data, dtype=np.int1
+                                   ).astype(np.float32) / 32768.0
         rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
         print(f"\r当前 RMS: {rms:.3f}", end='')
         if rms > threshold:
