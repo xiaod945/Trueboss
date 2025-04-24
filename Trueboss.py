@@ -9,9 +9,11 @@ import time
 import socket
 import numpy as np
 import vgamepad as vg
+import webbrowser
 
 # 配置文件路径
 CONFIG_FILE = 'Trueboss.ini'
+DOCUMENT_URL = 'https://docs.qq.com/doc/DVFNMaUZQWVpFYnhh'
 
 def create_default_config(path: str):
     """生成带注释的默认配置文件"""
@@ -51,6 +53,28 @@ choice = 1                   # 默认角色：富兰克林
     with open(path, 'w', encoding='utf-8') as f:
         f.write(default_config_content.strip() + '\n')
     print(f"未找到配置文件，已生成默认配置：{path}")
+    print("正在为您打开使用文档...")
+    try:
+        webbrowser.open(DOCUMENT_URL)
+    except Exception as e:
+        print(f"打开文档失败: {e}")
+
+    if not os.path.exists(CONFIG_FILE):
+        create_default_config(CONFIG_FILE)
+    config = load_config(CONFIG_FILE)
+
+def show_document_prompt():
+    print("\n" + "="*40)
+    print("扣1查看最新使用文档回车跳过")
+    print("="*40)
+    choice = input("请输入选择：").strip()
+    if choice == '1':
+        try:
+            webbrowser.open(DOCUMENT_URL)
+        except Exception as e:
+            print(f"打开文档失败: {e}")
+    # else:
+    #     # print("已跳过文档查看")
 
 def load_config(path: str) -> configparser.ConfigParser:
     config = configparser.ConfigParser(
@@ -163,8 +187,10 @@ def check_firewall():
     print("防火墙已开启，继续执行程序...")
 
 # 前置检测
+show_document_prompt()
 check_dependencies()
 check_firewall()
+
 
 # 加载配置
 if not os.path.exists(CONFIG_FILE):
