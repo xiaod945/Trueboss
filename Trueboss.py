@@ -56,6 +56,7 @@ choice = 1                   # 默认角色：富兰克林
     print("正在为您打开使用文档...")
     try:
         webbrowser.open(DOCUMENT_URL)
+        input("按回车键继续...")
     except Exception as e:
         print(f"打开文档失败: {e}")
 
@@ -71,6 +72,7 @@ def show_document_prompt():
     if choice == '1':
         try:
             webbrowser.open(DOCUMENT_URL)
+            input("按回车键继续...")
         except Exception as e:
             print(f"打开文档失败: {e}")
     # else:
