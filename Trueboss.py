@@ -56,6 +56,7 @@ choice = 1                   # 默认角色：富兰克林
     print("正在为您打开使用文档...")
     try:
         webbrowser.open(DOCUMENT_URL)
+        input("按回车键继续...")
     except Exception as e:
         print(f"打开文档失败: {e}")
 
@@ -71,6 +72,7 @@ def show_document_prompt():
     if choice == '1':
         try:
             webbrowser.open(DOCUMENT_URL)
+            input("按回车键继续...")
         except Exception as e:
             print(f"打开文档失败: {e}")
     # else:
@@ -332,7 +334,7 @@ def listening():
             print("超时，未检测到超过阈值的音频")
             break
         data = stream.read(chunk, exception_on_overflow=False)
-        audio_data = np.frombuffer(data, dtype=np.int1
+        audio_data = np.frombuffer(data, dtype=np.int16
                                    ).astype(np.float32) / 32768.0
         rms = np.sqrt(np.mean(audio_data ** 2)) * 100 + 1e-10
         print(f"\r当前 RMS: {rms:.3f}", end='')
