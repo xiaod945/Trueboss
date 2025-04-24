@@ -187,8 +187,8 @@ def check_firewall():
     print("防火墙已开启，继续执行程序...")
 
 # 前置检测
-show_document_prompt()
 check_dependencies()
+show_document_prompt()
 check_firewall()
 
 
