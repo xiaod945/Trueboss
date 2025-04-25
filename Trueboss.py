@@ -17,23 +17,54 @@ import webbrowser
 CONFIG_FILE = 'Trueboss.ini'
 DOCUMENT_URL = 'https://docs.qq.com/doc/DVFNMaUZQWVpFYnhh'
 
+
+def disable_quick_edit():
+    """禁用控制台快速编辑模式（防止点击窗口暂停程序）"""
+    if sys.platform != 'win32':
+        return
+
+    kernel32 = ctypes.windll.kernel32
+    STD_INPUT_HANDLE = -10
+
+    try:
+        handle = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_uint32()
+
+        # 获取当前控制台模式
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)) == 0:
+            return
+
+        # 计算新的模式（禁用快速编辑）
+        new_mode = mode.value & ~0x0040  # ENABLE_QUICK_EDIT_MODE
+
+        # 保持扩展标志位
+        if (new_mode & 0x0080) == 0:  # ENABLE_EXTENDED_FLAGS
+            new_mode |= 0x0080
+
+        if new_mode != mode.value:
+            kernel32.SetConsoleMode(handle, new_mode)
+    except Exception as e:
+        print(f"警告：禁用快速编辑模式失败（{e}），点击控制台可能导致程序暂停")
+
+disable_quick_edit()
+
 def create_default_config(path: str):
     """生成带注释的默认配置文件"""
     default_config_content = '''
 # 延迟相关配置（单位：秒）
 [Delays]
 delay_firewall = 15          # 断网检测延迟（默认15秒）
-delay_loading = 20           # 下云后延迟（默认20秒）
+delay_loading = 30           # 下云后延迟（默认30秒）
 delay_offline_online = 40    # 线上切线下延迟（默认40秒）
-button_hold_delay = 0.1      # 按键按下持续时间（默认0.1秒）
-button_release_delay = 0.5   # 松开按键后等待时间（默认0.5秒）
-button_hold_delay2 = 0.11    # 按键按下持续时间（默认0.11秒）
-button_release_delay2 = 0.15 # 松开按键后等待时间（默认0.15秒）
-button_release_delay3 = 1.5  # 松开按键后等待时间（默认1.5秒）
+button_hold_delay = 0.2      # 其他按键按下持续时间（默认0.2秒）(60FPS可设置0.05)
+button_release_delay = 0.5   # 其他松开按键后等待时间（默认1秒）(60FPS可设置0.4)
+button_hold_delay2 = 0.11    # 在线下打开主菜单按到在线选项时每次按键的按下持续时间（默认0.11秒）(60FPS可设置0.02)
+button_release_delay2 = 0.15 # 在线下打开主菜单按到在线选项时每次松开按键后等待时间（默认0.15秒）(60FPS可设置0.03)
+button_release_delay3 = 1.5  # 按下设置键后的等待时间（默认1.5秒）(60FPS可设置0.5)
 
 # 音频相关配置
 [Audio]
-format = 8     # 2=32-bit,4=24-bit,8=16-bit  采样格式 
+format = 8                   # 2=32-bit,4=24-bit,8=16-bit  采样格式 
 channels = 2                 # 声道
 rate = 44100                 # 采样率
 chunk = 1024                 # 每次读取的帧数
@@ -52,7 +83,7 @@ iterations = 100             # 总循环次数（默认100次）
 
 # 角色选择（1=富兰克林, 2=麦克, 3=崔佛）
 [Character]
-choice = 1                   # 默认角色：富兰克林
+choice = 1                   # 默认角色：富兰克林（序章没有富兰克林）
 '''
     with open(path, 'w', encoding='utf-8') as f:
         f.write(default_config_content.strip() + '\n')
@@ -200,10 +231,10 @@ config = load_config(CONFIG_FILE)
 
 # 加载配置参数
 delay_firewall = get_config_int(config, 'Delays', 'delay_firewall', 15)
-delay_loading = get_config_int(config, 'Delays', 'delay_loading', 20)
+delay_loading = get_config_int(config, 'Delays', 'delay_loading', 30)
 delay_offline_online = get_config_int(config, 'Delays', 'delay_offline_online', 40)
-button_hold_delay = get_config_float(config, 'Delays', 'button_hold_delay', 0.1)
-button_release_delay = get_config_float(config, 'Delays', 'button_release_delay', 0.5)
+button_hold_delay = get_config_float(config, 'Delays', 'button_hold_delay', 0.2)
+button_release_delay = get_config_float(config, 'Delays', 'button_release_delay', 1)
 button_hold_delay2 = get_config_float(config, 'Delays', 'button_hold_delay2', 0.11)
 button_release_delay2 = get_config_float(config, 'Delays', 'button_release_delay2', 0.15)
 button_release_delay3 = get_config_float(config, 'Delays', 'button_release_delay3', 1.5)
@@ -245,8 +276,8 @@ print(f"""你可以修改Trueboss.ini提升效率或者增强稳定性，修改�
   1. 断网/检测下云延迟     = {delay_firewall} 秒
   2. 下云后延迟    = {delay_loading} 秒
   3. 下线延迟 = {delay_offline_online} 秒
-  4. 按键保持时间  = {button_hold_delay2} 秒
-  5. 松开等待时间  = {button_release_delay2} 秒
+  4. 在线下打开主菜单按到在线选项时每次按键的按下持续时间  = {button_hold_delay2} 秒
+  5. 在线下打开主菜单按到在线选项时每次松开按键后等待时间  = {button_release_delay2} 秒
   4. 按键2保持时间 = {button_hold_delay} 秒
   5. 松开2等待时间 = {button_release_delay} 秒
   6. 按键3等待时间 = {button_release_delay3} 秒
@@ -427,7 +458,7 @@ try:
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_hold_delay)
             time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS, button_hold_delay)
-        time.sleep(button_release_delay)
+        time.sleep(button_release_delay3)
         for _ in range(5):
             press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST, button_hold_delay2)
             time.sleep(button_release_delay2)
@@ -453,7 +484,7 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
-        time.sleep(button_release_delay)
+        time.sleep(button_release_delay3)
         print("试图切线下角色")
         if character == 1:
             right_joystick(0, 1)
@@ -465,15 +496,17 @@ try:
         time.sleep(button_release_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)
         gamepad.update()
+        time.sleep(button_release_delay)
         gamepad.reset()
-        gamepad.update()
+        # gamepad.update()
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(delay_loading)
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                        stdout=subprocess.DEVNULL)
         for _ in range(2):
-            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT, button_hold_delay)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT, button_release_delay)
+            time.sleep(button_release_delay3)
             time.sleep(button_release_delay3)
         sleep(button_release_delay3)
 
@@ -490,7 +523,7 @@ try:
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_hold_delay)
             time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS, button_hold_delay)
-        time.sleep(button_release_delay)
+        time.sleep(button_release_delay3)
         for _ in range(5):
             press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST, button_hold_delay2)
             time.sleep(button_release_delay2)
@@ -525,7 +558,7 @@ try:
             time.sleep(button_release_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
-        time.sleep(button_release_delay)
+        time.sleep(button_release_delay3)
         print("切线下中…")
         if character == 1:
             right_joystick(0, 1)
@@ -537,8 +570,9 @@ try:
         time.sleep(button_release_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NORTH)
         gamepad.update()
+        time.sleep(button_release_delay)
         gamepad.reset()
-        gamepad.update()
+        # gamepad.update()
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(button_release_delay)
