@@ -190,7 +190,6 @@ def check_firewall():
     """循环检测防火墙状态，直到专用和公用配置文件都开启"""
     while not is_firewall_enabled():
         input("检测到未开启防火墙，请开启防火墙后按回车键继续...")
-    print("防火墙已开启，继续执行程序...")
 
 
 
@@ -448,6 +447,7 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
         time.sleep(button_release_delay3)
         listening2()
+        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(delay_loading)
         # time.sleep(10)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
@@ -510,11 +510,13 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
         if cutnetworkset == 1:
             time.sleep(delay_firewall)
+            press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         else:
             time.sleep(delay_firewall)
             cutnetwork()
             print("已断网！检测到固定延时")
         listening()
+        press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(delay_loading)
         print("发呆等电话…")
         for _ in range(3):
