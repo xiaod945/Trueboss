@@ -399,13 +399,13 @@ def configure_gtav_settings():
     <OutputIndex value="0" />
     <ScreenWidth value="1024" />
     <ScreenHeight value="768" />
-    <RefreshRate value="60" />
+    <RefreshRate value="30" />
     <Windowed value="1" />
     <VSync value="0" />
     <PauseOnFocusLoss value="0" />
     <AspectRatio value="0" />
     <ReflexMode value="0" />
-    <FrameLimit value="120" />
+    <FrameLimit value="30" />
   </video>
   <VideoCardDescription></VideoCardDescription>
   <CPUDescription></CPUDescription>
