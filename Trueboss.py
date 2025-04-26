@@ -4,9 +4,12 @@ from time import sleep
 import pyaudio
 import os
 import subprocess
-import win32com.client  # 用于访问 COM 对象
+import win32com.client
 import configparser
+import shutil
+import xml.etree.ElementTree as ET
 import psutil
+from pathlib import Path
 import time
 import socket
 import numpy as np
@@ -17,30 +20,23 @@ import webbrowser
 CONFIG_FILE = 'Trueboss.ini'
 DOCUMENT_URL = 'https://docs.qq.com/doc/DVFNMaUZQWVpFYnhh'
 
-
 def disable_quick_edit():
     """禁用控制台快速编辑模式（防止点击窗口暂停程序）"""
     if sys.platform != 'win32':
         return
-
     kernel32 = ctypes.windll.kernel32
     STD_INPUT_HANDLE = -10
-
     try:
         handle = kernel32.GetStdHandle(STD_INPUT_HANDLE)
         mode = ctypes.c_uint32()
-
         # 获取当前控制台模式
         if kernel32.GetConsoleMode(handle, ctypes.byref(mode)) == 0:
             return
-
         # 计算新的模式（禁用快速编辑）
         new_mode = mode.value & ~0x0040  # ENABLE_QUICK_EDIT_MODE
-
         # 保持扩展标志位
         if (new_mode & 0x0080) == 0:  # ENABLE_EXTENDED_FLAGS
             new_mode |= 0x0080
-
         if new_mode != mode.value:
             kernel32.SetConsoleMode(handle, new_mode)
     except Exception as e:
@@ -101,9 +97,9 @@ choice = 1                   # 默认角色：富兰克林（序章没有富兰�
 
 def show_document_prompt():
     print("\n" + "="*40)
-    print("扣1查看最新使用文档回车跳过")
+    print("扣 1 查看最新使用文档回车跳过")
     print("="*40)
-    choice = input("请输入选择：").strip()
+    choice = input("请输入：").strip()
     if choice == '1':
         try:
             webbrowser.open(DOCUMENT_URL)
@@ -222,7 +218,282 @@ def check_firewall():
     while not is_firewall_enabled():
         input("检测到未开启防火墙，请开启防火墙后按回车键继续...")
 
+def configure_gtav_settings():
+    """
+    1) 回车 — 跳过操作
+    2) 输入 1 — 修改（备份并应用画质模板，只保留显卡/CPU 描述）
+    3) 输入 2 — 恢复（从备份还原 settings.xml）
 
+    修改/恢复 前，会自动检测正在运行的 GTA5.exe / GTA5_Enhanced.exe，
+    以决定操作目录；如均未运行，则提示用户二选一。
+
+    操作完成后，可选择自动结束相关进程（使新配置生效），
+    或由用户手动重启游戏。
+    """
+    choice = input("将游戏改为最低画质，回车跳过；1: 修改画质；2: 恢复原状）：").strip()
+    if choice == '':
+        # print("已跳过操作。")
+        return
+    if choice not in ('1', '2'):
+        print("无效选项，退出。")
+        return
+
+    # —— 根据运行中的进程来决定目录 —— #
+    running = {p.info['name'] for p in psutil.process_iter(['name'])}
+    if 'GTA5.exe' in running:
+        subdir = "GTAV"
+    elif 'GTA5_Enhanced.exe' in running:
+        subdir = "GTAV Enhanced"
+    else:
+        fb = input("未检测到运行中的 GTA5，请输入 1 修改传承版，2 修改增强版：").strip()
+        if fb == '1':
+            subdir = "GTAV"
+        elif fb == '2':
+            subdir = "GTAV Enhanced"
+        else:
+            print("无效输入，退出。")
+            return
+
+    # 构造文件路径
+    base_path     = Path.home() / "Documents" / "Rockstar Games" / subdir
+    settings_file = base_path / "settings.xml"
+    backup_file   = base_path / "settings_backup.xml"
+
+    if choice == '':
+        return
+
+    if choice == '1':
+        # 检查原始文件是否存在
+        if not settings_file.exists():
+            print(f"未找到画质文件：{settings_file}")
+            return
+
+        # 备份原文件
+        if backup_file.exists():
+            print('已有备份不再生成')
+        else:
+            shutil.copy2(settings_file, backup_file)
+            print(f"已备份原画质文件到：{backup_file}")
+
+        # 解析原 settings.xml，保留 VideoCardDescription 和 CPUDescription 节点
+        tree = ET.parse(settings_file)
+        root = tree.getroot()
+        video_elem = root.find('VideoCardDescription')
+        cpu_elem = root.find('CPUDescription')
+
+        # 用 etree 将节点序列化为字符串，以便后续重插入
+        video_xml = ET.tostring(video_elem, encoding='unicode') if video_elem is not None else ''
+        cpu_xml = ET.tostring(cpu_elem, encoding='unicode') if cpu_elem is not None else ''
+
+        # 预设的完整模板（剔除了 xml 声明，由 write 时自动加上）
+        template = """
+<Settings>
+  <version value="34" />
+  <configSource>SMC_AUTO</configSource>
+  <graphics>
+    <Tessellation value="0" />
+    <LodScale value="0.000000" />
+    <PedLodBias value="0.000000" />
+    <VehicleLodBias value="0.000000" />
+    <ShadowQuality value="1" />
+    <ReflectionQuality value="0" />
+    <SSAOType value="0" />
+    <AnisotropicFiltering value="0" />
+    <ResScalingType value="1" />
+    <SamplingMode value="0" />
+    <TextureQuality value="0" />
+    <ParticleQuality value="0" />
+    <WaterQuality value="0" />
+    <GrassQuality value="0" />
+    <ShaderQuality value="0" />
+    <Shadow_SoftShadows value="1" />
+    <UltraShadows_Enabled value="false" />
+    <Shadow_ParticleShadows value="false" />
+    <Shadow_Distance value="1.000000" />
+    <Shadow_LongShadows value="false" />
+    <Shadow_SplitZStart value="0.930000" />
+    <Shadow_SplitZEnd value="0.890000" />
+    <Shadow_aircraftExpWeight value="0.990000" />
+    <Shadow_DisableScreenSizeCheck value="false" />
+    <Reflection_MipBlur value="true" />
+    <AAType value="0" />
+    <TAA_Quality value="1" />
+    <TAA_SharpenIntensity value="1.000000" />
+    <fsrQuality value="4" />
+    <fsrSharpen value="0.200000" />
+    <fsr3Quality value="2" />
+    <fsr3Sharpen value="0.800000" />
+    <dlssQuality value="2" />
+    <dlssSharpen value="0.800000" />
+    <Lighting_FogVolumes value="false" />
+    <Shader_SSA value="false" />
+    <CityDensity value="0.000000" />
+    <PedVarietyMultiplier value="0.000000" />
+    <VehicleVarietyMultiplier value="0.000000" />
+    <VehicleHeadlightDistanceMultiplier value="1.000000" />
+    <PostFX value="0" />
+    <DoF value="0" />
+    <HdStreamingInFlight value="false" />
+    <MaxLodScale value="0.000000" />
+    <MotionBlurStrength value="0.000000" />
+    <VehicleDamageCacheSize value="40" />
+    <VehicleDamageTextureSize value="128" />
+    <PedOverlayTextureSize value="256" />
+    <PedOverlayCloseUpTextureSize value="512" />
+    <HDTextureSwapsPerFrame value="2048" />
+    <LensFlare_HalfRes value="true" />
+    <LensArtefacts_HalfRes value="true" />
+    <Raytracing_Enabled value="false" />
+    <Raytracing_StaticBvhEnabled value="true" />
+    <Raytracing_StaticBvhRadius value="256.000000" />
+    <Raytracing_StaticBvhAngularThreshold value="0.750000" />
+    <Raytracing_DynamicBvhEnabled value="true" />
+    <Raytracing_DynamicBvhRadius value="64.000000" />
+    <Raytracing_DynamicBvhAngularThreshold value="1.500000" />
+    <Raytracing_HDVehicleBvhRadius value="32.000000" />
+    <Raytracing_VehicleBvhRadius value="256.000000" />
+    <Raytracing_TreeBvhEnabled value="true" />
+    <Raytracing_TreeBvhRadius value="256.000000" />
+    <Raytracing_TreeBvhAngularThreshold value="1.000000" />
+    <Raytracing_TreeBvhAnimRadius value="64.000000" />
+    <Raytracing_TreeBvhAnimSSThreshold value="0.200000" />
+    <Raytracing_TreeBvhAxisSSThreshold value="0.030000" />
+    <Raytracing_GrassBvhEnabled value="false" />
+    <Raytracing_GrassBvhRadius value="96.000000" />
+    <Raytracing_GrassBvhAngularThreshold value="3.000000" />
+    <Raytracing_GrassBvhDensity value="1.750000" />
+    <DeferredReflectionsEnabled value="false" />
+    <DeferredCubeReflectionsEnabled value="false" />
+    <DeferredWaterReflectionsEnabled value="false" />
+    <DeferredMirrorReflectionsEnabled value="false" />
+    <DeferredCubeReflectionsComputeEnabled value="false" />
+    <DeferredWaterReflectionsComputeEnabled value="false" />
+    <DeferredMirrorReflectionsComputeEnabled value="false" />
+    <RTShadows_Enabled value="false" />
+    <RTShadows_Quality value="0" />
+    <RTAmbientOcclusion_Enabled value="false" />
+    <RTAmbientOcclusion_Quality value="0" />
+    <RTReflection_Enabled value="false" />
+    <RTReflection_Quality value="0" />
+    <RTIndirectDiffuse_Enabled value="false" />
+    <RTIndirectDiffuse_Quality value="0" />
+    <RTCharacterShadow_Enabled value="false" />
+    <RTApplyAOToFillLights value="false" />
+    <RTIndirectDiffuse_SecondBounce_Enabled value="false" />
+    <PlayerHeadlightShadowsQuality value="0" />
+    <NetPlayerHeadlightsCastShadows value="false" />
+    <AllVehicleHeadlightShadowsQuality value="0" />
+  </graphics>
+  <system>
+    <numBytesPerReplayBlock value="9000000" />
+    <numReplayBlocks value="30" />
+    <maxSizeOfStreamingReplay value="1024" />
+    <maxFileStoreSize value="65536" />
+    <forceSingleStepPhysics value="false" />
+  </system>
+  <audio>
+    <Audio3d value="false" />
+  </audio>
+  <video>
+    <AdapterIndex value="0" />
+    <OutputIndex value="0" />
+    <ScreenWidth value="1024" />
+    <ScreenHeight value="768" />
+    <RefreshRate value="60" />
+    <Windowed value="1" />
+    <VSync value="0" />
+    <PauseOnFocusLoss value="0" />
+    <AspectRatio value="0" />
+    <ReflexMode value="0" />
+    <FrameLimit value="120" />
+  </video>
+  <VideoCardDescription></VideoCardDescription>
+  <CPUDescription></CPUDescription>
+  <Presets>
+    <PresetLevel value="0" />
+    <BVHQuality value="0" />
+    <RTShadowQuality value="0" />
+    <RTReflectionQuality value="0" />
+    <RTDynamicQuality value="0" />
+    <RTStaticQuality value="0" />
+    <RTVehicleQuality value="0" />
+    <RTTreeQuality value="0" />
+    <RTGrassQuality value="0" />
+    <RTAOQuality value="0" />
+    <RTGIQuality value="0" />
+    <LightingQuality value="0" />
+    <PostFXQuality value="0" />
+    <ReflectionQuality value="0" />
+  </Presets>
+</Settings>
+"""
+        # 加载模板
+        tmpl_root = ET.fromstring(template)
+
+        # 将原始的描述节点插入到模板中
+        parent = tmpl_root
+        if video_xml:
+            new_video = ET.fromstring(video_xml)
+            # 移除空的占位节点
+            old = tmpl_root.find('VideoCardDescription')
+            if old is not None:
+                parent.remove(old)
+            parent.append(new_video)
+        if cpu_xml:
+            new_cpu = ET.fromstring(cpu_xml)
+            old = tmpl_root.find('CPUDescription')
+            if old is not None:
+                parent.remove(old)
+            parent.append(new_cpu)
+
+        # 写回 settings.xml（包含 XML 声明）
+        new_tree = ET.ElementTree(tmpl_root)
+        new_tree.write(settings_file, encoding='UTF-8', xml_declaration=True)
+        print("画质选项修改成功,重启游戏生效~")
+
+    elif choice == '2':
+        # 恢复
+        if not backup_file.exists():
+            print(f"未找到备份文件：{backup_file}")
+            return
+        # 覆盖还原
+        shutil.copy2(backup_file, settings_file)
+        # 删除备份文件
+        try:
+            backup_file.unlink()
+            print("已从备份还原并删除了备份文件。")
+        except Exception as e:
+            print(f"画质文件已还原，但删除备份文件时出错：{e}")
+
+    else:
+        print("无效选项，请输入 1 或 2。")
+
+    running = {p.info['name'] for p in psutil.process_iter(['name'])}
+    if 'GTA5.exe' in running:
+        kill_prompt = f"输入 1 关闭游戏，回车跳过"
+    elif 'GTA5_Enhanced.exe' in running:
+        kill_prompt = f"输入 1 关闭游戏，回车跳过"
+    else:
+        return
+
+    kill_choice = input(kill_prompt).strip()
+    if kill_choice == '1':
+        target_names = {
+                "GTA5.exe", "GTA5_Enhanced.exe", "SocialClubHelper.exe",
+            "Launcher.exe", "RockstarService.exe", "RockstarErrorHandler.exe", "PlayGTAV.exe"
+        }
+        for proc in psutil.process_iter(['name']):
+            name = proc.info.get('name')
+            if name in target_names:
+                try:
+                    proc.terminate()
+                    print(f"已终止进程：{name} (PID {proc.pid})")
+                except Exception as e:
+                    print(f"无法终止 {name} (PID {proc.pid})：{e}")
+        input('请按任意键退出程序')
+        sys.exit(0)
+    else:
+        print("请手动重启游戏以使设置生效。")
 
 # 加载配置
 if not os.path.exists(CONFIG_FILE):
@@ -254,7 +525,7 @@ run_mode = get_config_int(config, 'Miscset', 'run_mode', 0)
 check_dependencies()
 show_document_prompt()
 check_firewall()
-
+configure_gtav_settings()
 
 if run_mode not in (0, 1):
     print("运行模式参数无效，已重置为默认值0")
