@@ -562,11 +562,11 @@ def configure_gtav_settings():
     <ScreenHeight value="768" />
     <RefreshRate value="60" />
     <Windowed value="1" />
-    <VSync value="1" />
+    <VSync value="0" />
     <PauseOnFocusLoss value="0" />
     <AspectRatio value="0" />
     <ReflexMode value="0" />
-    <FrameLimit value="0" />
+    <FrameLimit value="60" />
   </video>
   <Presets>
     <PresetLevel value="0" />
@@ -929,8 +929,10 @@ def cutnetwork():
                 )
                 logger.info("已断网！检测到下云音频")
         else:
-            logger.info('开始切换角色')
+            logger.info('开始切换角色任务')
+            logger.info(f"开始等delay_loading {delay_loading}秒")
             time.sleep(delay_loading)
+            logger.info('执行进入管理角色操作')
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_OPTIONS, button_release_delay3)
             time.sleep(button_release_delay3)
             press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST, button_hold_delay2)
@@ -943,12 +945,16 @@ def cutnetwork():
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
             time.sleep(button_release_delay)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+            logger.info(f"开始等delay_offline_online {delay_offline_online}秒")
             time.sleep(delay_offline_online)
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
             time.sleep(delay_firewall)
+            logger.info('执行切换角色操作')
             press_dpad(gamepad, vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST, button_hold_delay2)
-            time.sleep(button_release_delay2)
+            time.sleep(button_release_delay3)
+            time.sleep(button_release_delay3)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
-            time.sleep(button_release_delay)
+            # time.sleep(button_release_delay)
             # subprocess.run(
             #     'netsh advfirewall firewall add rule '
             #     'dir=out action=block protocol=TCP localport=6672 '
@@ -977,7 +983,8 @@ def cutnetwork():
             #     shell=True,
             #     stdout=subprocess.DEVNULL
             # )
-            sleep(delay_firewall)
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
+            time.sleep(delay_firewall)
             audio_start_time = time.time()
             stream = p.open(
                 format=format,
@@ -1010,6 +1017,7 @@ def cutnetwork():
                     logger.info("已断网！检测到下云音频")
                     break
             stream.close()
+            logger.info(f"开始等delay_offline_online {delay_offline_online}秒")
             sleep(delay_offline_online)
 
             if r == t:
@@ -1172,6 +1180,7 @@ start_time = time.time()
 try:
     if run_mode == 0:
         # 新增初始化操作
+        logger.info('执行清除断网规则')
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                        stdout=subprocess.DEVNULL)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
@@ -1201,20 +1210,23 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
         time.sleep(button_release_delay3)
         if cutnetworkset == 1:
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
             time.sleep(delay_firewall)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         else:
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
             time.sleep(delay_firewall)
             cutnetwork()
         listening2()
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+        logger.info(f"开始等delay_loading {delay_loading}秒")
         time.sleep(delay_loading)
         # time.sleep(10)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
         time.sleep(button_release_delay3)
-        logger.info("试图切线下角色")
+        logger.info("执行切换线下人物操作")
         if character == 1:
             right_joystick(0, 1)
         elif character == 2:
@@ -1230,9 +1242,12 @@ try:
         # gamepad.update()
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+        logger.info(f"开始等delay_loading {delay_loading}秒")
         time.sleep(delay_loading)
+        logger.info('执行清除断网规则')
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                        stdout=subprocess.DEVNULL)
+        logger.info('假设进入了主菜单返回故事模式')
         for _ in range(2):
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SHOULDER_RIGHT, button_release_delay)
             time.sleep(button_release_delay3)
@@ -1240,13 +1255,16 @@ try:
         sleep(button_release_delay3)
 
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+        logger.info(f"开始等delay_loading {delay_loading}秒")
         sleep(delay_loading)
         logger.info("初始化操作完成，开始主循环...")
 
     while r < t:
         r += 1
+        logger.info('执行清除断网规则')
         subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                        stdout=subprocess.DEVNULL)
+        logger.info('执行进入线上模式操作')
         for _ in range(3):
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_hold_delay)
@@ -1271,16 +1289,19 @@ try:
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
         if cutnetworkset == 1:
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
             time.sleep(delay_firewall)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         else:
+            logger.info(f"开始等delay_firewall {delay_firewall}秒")
             time.sleep(delay_firewall)
             cutnetwork2()
 
         listening()
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+        logger.info(f"开始等delay_loading {delay_loading}秒")
         time.sleep(delay_loading)
-        logger.info("发呆等电话…")
+        logger.info("执行打断可能来的电话操作")
         for _ in range(3):
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_release_delay)
             press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, button_release_delay)
@@ -1288,7 +1309,7 @@ try:
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
         time.sleep(button_release_delay3)
-        logger.info("切线下中…")
+        logger.info("执行切换线下人物操作")
         if character == 1:
             right_joystick(0, 1)
         elif character == 2:
@@ -1306,6 +1327,7 @@ try:
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
         time.sleep(button_release_delay)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, button_hold_delay)
+        logger.info(f"开始等delay_offline_online {delay_offline_online}秒")
         time.sleep(delay_offline_online)
         logger.info(f"已完成 {r} 次 \n")
         getRuntime()
