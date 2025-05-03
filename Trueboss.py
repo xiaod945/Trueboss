@@ -18,7 +18,8 @@ import logging
 import winreg
 from datetime import datetime
 
-# pyinstaller --onefile  --add-binary "C:\Users\1\AppData\Local\Programs\Python\Python312\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll;."  --add-data "ViGEmBus_1.22.0_x64_x86_arm64.exe;."  --add-data "VBCABLE;VBCABLE"  --add-data "cloudsavedata.dat;."  --add-data "pc_settings.bin;."  --icon=app.ico  Trueboss.py
+# pyinstaller --onefile  --add-binary "C:\Users\1\AppData\Local\Programs\Python\Python312\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll;."  --add-data "ViGEmBus_1.22.0_x64_x86_arm64.exe;."  --add-data "VBCABLE;VBCABLE"  --add-data "cloudsavedata.dat;."  --add-data "pc_settings.bin;." --add-data "SoundVolumeView.exe;." --icon=app.ico  Trueboss.py
+
 
 # 配置文件路径
 CONFIG_FILE = 'Trueboss.ini'
@@ -77,8 +78,8 @@ delay_loading = 30               # 下云后延迟（默认30秒）
 delay_offline_online = 40        # 线上切线下延迟（默认40秒）
 button_hold_delay = 0.2          # 其他按键按下持续时间(60FPS可设置0.05)
 button_release_delay = 1         # 其他松开按键后等待时间(60FPS可设置0.4)
-button_hold_delay2 = 0.11        # 在线下打开主菜单按到在线选项时每次按键的按下持续时间(60FPS可设置0.02)
-button_release_delay2 = 0.15     # 在线下打开主菜单按到在线选项时每次松开按键后等待时间(60FPS可设置0.03)
+button_hold_delay2 = 0.11        # 在线下打开主菜单按到在线选项时每次按键的按下持续时间(60FPS可设置0.03)
+button_release_delay2 = 0.15     # 在线下打开主菜单按到在线选项时每次松开按键后等待时间(60FPS可设置0.04)
 button_release_delay3 = 1.5      # 按下设置键后的等待时间(60FPS可设置0.5)
 
 # 音频相关配置
@@ -847,6 +848,73 @@ import vgamepad as vg
 
 gamepad = vg.VDS4Gamepad()
 
+def _is_any_gta_running():
+    """
+    检查 GTA5_Enhanced.exe 或 GTA5.exe 是否在运行。
+    :return: 运行的进程名列表（可能包含一个或两个），如果都未运行，则返回空列表。
+    """
+    gta_names = ["GTA5_Enhanced.exe", "GTA5.exe"]
+    running = []
+    for proc in psutil.process_iter(attrs=["name"]):
+        name = proc.info["name"]
+        if name in gta_names:
+            if name not in running:
+                running.append(name)
+    return running
+
+def set_gta_output_device(device_name: str):
+    """
+    将所有正在运行的 GTA5 相关进程的音频输出设备设置为 device_name。
+    如果未检测到进程运行，则不做任何操作。
+
+    :param device_name: 输出设备名称，例如 "CABLE Input"
+    """
+    running = _is_any_gta_running()
+    if not running:
+        logger.error("错误！未找到运行中的GTA5！")
+        input("请确保游戏正在运行，按回车键退出程序...")
+        sys.exit(1)
+
+    svv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SoundVolumeView.exe")
+    for proc_name in running:
+        cmd = [
+            svv,
+            "/SetAppDefault",
+            device_name,
+            "all",
+            proc_name
+        ]
+        subprocess.run(
+            cmd,
+            shell=True, stdout=subprocess.DEVNULL
+        )
+    logger.info(f"已将 {', '.join(running)} 的音频输出切换到 {device_name}。")
+
+def reset_gta_to_system_default():
+    """
+    将所有正在运行的 GTA5 相关进程的音频输出恢复为系统默认渲染设备。
+    如果未检测到进程运行，则不做任何操作。
+    """
+    running = _is_any_gta_running()
+    if not running:
+        logger.error("未找到运行中的GTA5，跳过恢复默认设备。")
+        return
+
+    svv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SoundVolumeView.exe")
+    for proc_name in running:
+        cmd = [
+            svv,
+            "/SetAppDefault",
+            "DefaultRenderDevice",
+            "all",
+            proc_name
+        ]
+        subprocess.run(
+            cmd,
+            shell=True, stdout=subprocess.DEVNULL
+        )
+    logger.info(f"已将 {', '.join(running)} 的音频输出恢复为系统默认设备。")
+
 
 def press_button(gamepad, button, hold_time):
     gamepad.press_button(button=button)
@@ -900,6 +968,8 @@ def cutnetwork():
                 logger.info("已断网！检测到下云音频")
         else:
             logger.info("最后一次保存不断网")
+            reset_gta_to_system_default()
+
 
     elif endset == 2:
         if r < t:
@@ -914,6 +984,7 @@ def cutnetwork():
                 )
                 logger.info("已断网！检测到下云音频")
         else:
+            reset_gta_to_system_default()
             shutdown_computer()
 
     elif endset == 3:
@@ -1027,7 +1098,23 @@ def cutnetwork():
                     subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                                    stdout=subprocess.DEVNULL)
                     logger.info("防火墙规则已删除，程序安全退出！")
+                    reset_gta_to_system_default()
                     shutdown_computer()
+    else:
+        if r < t:
+            if not r == t:
+                ip = get_domain_ip("cs-gta5-prod.ros.rockstargames.com")
+                subprocess.run(
+                    f'netsh advfirewall firewall add rule '
+                    f'dir=out action=block protocol=TCP '
+                    f'remoteip="{ip},192.81.241.171" '
+                    f'name="仅阻止云存档上传"',
+                    shell=True, stdout=subprocess.DEVNULL
+                )
+                logger.info("已断网！检测到下云音频")
+        else:
+            logger.info("已断网！检测到最后一轮")
+            reset_gta_to_system_default()
 
 
 def cutnetwork2():
@@ -1173,6 +1260,8 @@ def listening2():
             break
     stream.close()
 
+set_gta_output_device("CABLE Input")
+
 
 # 主逻辑
 r = 0
@@ -1223,6 +1312,7 @@ try:
         time.sleep(delay_loading)
         # time.sleep(10)
         press_button(gamepad, vg.DS4_BUTTONS.DS4_BUTTON_CROSS, button_hold_delay)
+        time.sleep(button_release_delay3)
         gamepad.directional_pad(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH)
         gamepad.update()
         time.sleep(button_release_delay3)
@@ -1336,6 +1426,7 @@ except KeyboardInterrupt:
     subprocess.run('netsh advfirewall firewall delete rule name="仅阻止云存档上传"', shell=True,
                    stdout=subprocess.DEVNULL)
     logger.info("防火墙规则已删除，程序安全退出！")
+    reset_gta_to_system_default()
     if p.Stream.is_active == True:
         p.Stream.close()
     p.terminate()
